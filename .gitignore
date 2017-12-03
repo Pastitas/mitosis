@@ -3,3 +3,4 @@
 *.map
 *.bin
 *.out
+*.DS_Store

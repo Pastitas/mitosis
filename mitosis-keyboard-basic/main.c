@@ -1,5 +1,5 @@
 
-// #define COMPILE_RIGHT
+//#define COMPILE_RIGHT
 #define COMPILE_LEFT
 
 #include "mitosis.h"
