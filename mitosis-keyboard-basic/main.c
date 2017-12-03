@@ -33,7 +33,7 @@ uint32_t remote_state = 0;
 #define TX_PAYLOAD_LENGTH 3 ///< 3 byte payload length when transmitting
 
 // Data and acknowledgement payloads
-// static uint8_t data_payload[TX_PAYLOAD_LENGTH];                ///< Payload to send to Host. 
+static uint8_t data_payload[TX_PAYLOAD_LENGTH];                ///< Payload to send to Host. 
 // static uint8_t ack_payload[NRF_GZLL_CONST_MAX_PAYLOAD_LENGTH]; ///< Placeholder for received ACK payloads from Host.
 
 // Setup switch pins with pullups
@@ -103,12 +103,6 @@ static void send(uint32_t keys)
     nrf_gzll_add_packet_to_tx_fifo(PIPE_NUMBER, data_payload, TX_PAYLOAD_LENGTH);
 }
 
-// Disable the debounce RTC
-static void deep_sleep()
-{
-    nrf_drv_rtc_disable(&rtc_debounce);
-}
-
 static uint32_t debounce(uint32_t snapshot)
 {
 	uint32_t on_state = ~0;
@@ -156,10 +150,10 @@ static void handler_debounce(nrf_drv_rtc_int_type_t int_type)
 		remote_state = state;
 	}
 
-    // If there are no keys pressed go to sleep immediately
+    // If there are no keys pressed stop the timer immediately and go to sleep
 	if (state == 0)
 	{
-		deep_sleep();
+		nrf_drv_rtc_disable(&rtc_debounce);
 	}
 }
 

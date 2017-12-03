@@ -35,7 +35,7 @@ brew install https://raw.githubusercontent.com/ARMmbed/homebrew-formulae/master/
 
 Nordic does not allow redistribution of their SDK or components, so download and extract from their site:
 
-https://www.nordicsemi.com/eng/nordic/Products/nRF5-SDK/nRF5-SDK-v12-zip/54291
+https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v11.x.x/nRF5_SDK_11.0.0_89a8197.zip
 
 Firmware written and tested with version 11
 
