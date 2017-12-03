@@ -7,7 +7,6 @@ if [[ $? -ne 0 ]] ; then
 fi
 sleep 0.1
 HEX=`readlink -f _build/nrf51822_xxac.hex`
-du -b $HEX
 
 echo
 echo '============================= PROGRAMMING ============================='

@@ -1,6 +1,6 @@
 
-#define COMPILE_RIGHT
-//#define COMPILE_LEFT
+// #define COMPILE_RIGHT
+#define COMPILE_LEFT
 
 #include "mitosis.h"
 #include "nrf_drv_config.h"
@@ -15,28 +15,26 @@
 /** Configuration */
 /*****************************************************************************/
 
-const nrf_drv_rtc_t rtc_maint = NRF_DRV_RTC_INSTANCE(0); /**< Declaring an instance of nrf_drv_rtc for RTC0. */
-const nrf_drv_rtc_t rtc_deb = NRF_DRV_RTC_INSTANCE(1); /**< Declaring an instance of nrf_drv_rtc for RTC1. */
+const nrf_drv_rtc_t rtc_debounce = NRF_DRV_RTC_INSTANCE(0); /**< Declaring an instance of nrf_drv_rtc for RTC1. */
 
+// Number of samples before debouncing
+#define SAMPLES_COUNT 5
+
+// Ring buffer that holds the previous states used for debouncing
+uint32_t buffer[SAMPLES_COUNT] = {0};
+
+// Head pointer to the ring buffer
+uint32_t head = 0;
+
+// Keys state of the controller
+uint32_t remote_state = 0;
 
 // Define payload length
 #define TX_PAYLOAD_LENGTH 3 ///< 3 byte payload length when transmitting
 
 // Data and acknowledgement payloads
-static uint8_t data_payload[TX_PAYLOAD_LENGTH];                ///< Payload to send to Host. 
-static uint8_t ack_payload[NRF_GZLL_CONST_MAX_PAYLOAD_LENGTH]; ///< Placeholder for received ACK payloads from Host.
-
-// Debounce time (dependent on tick frequency)
-#define DEBOUNCE 5
-#define ACTIVITY 500
-
-// Key buffers
-static uint32_t keys, keys_snapshot;
-static uint32_t debounce_ticks, activity_ticks;
-static volatile bool debouncing = false;
-
-// Debug helper variables
-static volatile bool init_ok, enable_ok, push_ok, pop_ok, tx_success;  
+// static uint8_t data_payload[TX_PAYLOAD_LENGTH];                ///< Payload to send to Host. 
+// static uint8_t ack_payload[NRF_GZLL_CONST_MAX_PAYLOAD_LENGTH]; ///< Placeholder for received ACK payloads from Host.
 
 // Setup switch pins with pullups
 static void gpio_config(void)
@@ -73,7 +71,7 @@ static uint32_t read_keys(void)
 }
 
 // Assemble packet and send to receiver
-static void send_data(void)
+static void send(uint32_t keys)
 {
     data_payload[0] = ((keys & 1<<S01) ? 1:0) << 7 | \
                       ((keys & 1<<S02) ? 1:0) << 6 | \
@@ -105,64 +103,65 @@ static void send_data(void)
     nrf_gzll_add_packet_to_tx_fifo(PIPE_NUMBER, data_payload, TX_PAYLOAD_LENGTH);
 }
 
-// 8Hz held key maintenance, keeping the reciever keystates valid
-static void handler_maintenance(nrf_drv_rtc_int_type_t int_type)
+// Disable the debounce RTC
+static void deep_sleep()
 {
-    send_data();
+    nrf_drv_rtc_disable(&rtc_debounce);
+}
+
+static uint32_t debounce(uint32_t snapshot)
+{
+	uint32_t on_state = ~0;
+	uint32_t off_state = 0;
+	uint32_t state = remote_state;
+
+    // Store the read state in the ring buffer
+	buffer[head++] = snapshot;
+
+    // Reset the head pointer of the ring buffer
+	if (head == SAMPLES_COUNT)
+	{
+		head = 0;
+	}
+
+    // Collapse all the previous states into two variable
+	for (uint32_t i = 0; i < SAMPLES_COUNT; ++i)
+	{
+		on_state &= buffer[i];
+		off_state |= buffer[i];
+	}
+
+    // Debouncing the ON state (a key is pressed if previous five states are 1)
+	state |= on_state;
+
+    // Debouncing the OFF state (a key is released if previous five states are 0)
+	state &= off_state;
+
+	return state;
 }
 
 // 1000Hz debounce sampling
 static void handler_debounce(nrf_drv_rtc_int_type_t int_type)
 {
-    // debouncing, waits until there have been no transitions in 5ms (assuming five 1ms ticks)
-    if (debouncing)
-    {
-        // if debouncing, check if current keystates equal to the snapshot
-        if (keys_snapshot == read_keys())
-        {
-            // DEBOUNCE ticks of stable sampling needed before sending data
-            debounce_ticks++;
-            if (debounce_ticks == DEBOUNCE)
-            {
-                keys = keys_snapshot;
-                send_data();
-            }
-        }
-        else
-        {
-            // if keys change, start period again
-            debouncing = false;
-        }
-    }
-    else
-    {
-        // if the keystate is different from the last data
-        // sent to the receiver, start debouncing
-        if (keys != read_keys())
-        {
-            keys_snapshot = read_keys();
-            debouncing = true;
-            debounce_ticks = 0;
-        }
-    }
+    // Read the current state of the switches
+    uint32_t snapshot = read_keys();
 
-    // looking for 500 ticks of no keys pressed, to go back to deep sleep
-    if (read_keys() == 0)
-    {
-        activity_ticks++;
-        if (activity_ticks > ACTIVITY)
-        {
-            nrf_drv_rtc_disable(&rtc_maint);
-            nrf_drv_rtc_disable(&rtc_deb);
-        }
-    }
-    else
-    {
-        activity_ticks = 0;
-    }
+    // Debounce the state
+	uint32_t state = debounce(snapshot);
 
+    // Only send data if different than what the keyboard thinks the remote state is
+	if (state != remote_state)
+	{
+		send(state);
+		remote_state = state;
+	}
+
+    // If there are no keys pressed go to sleep immediately
+	if (state == 0)
+	{
+		deep_sleep();
+	}
 }
-
 
 // Low frequency clock configuration
 static void lfclk_config(void)
@@ -176,16 +175,14 @@ static void lfclk_config(void)
 static void rtc_config(void)
 {
     //Initialize RTC instance
-    nrf_drv_rtc_init(&rtc_maint, NULL, handler_maintenance);
-    nrf_drv_rtc_init(&rtc_deb, NULL, handler_debounce);
+    nrf_drv_rtc_init(&rtc_debounce, NULL, handler_debounce);
 
     //Enable tick event & interrupt
-    nrf_drv_rtc_tick_enable(&rtc_maint,true);
-    nrf_drv_rtc_tick_enable(&rtc_deb,true);
+    nrf_drv_rtc_tick_enable(&rtc_debounce, true);
 
     //Power on RTC instance
     //nrf_drv_rtc_enable(&rtc_maint);
-    //nrf_drv_rtc_enable(&rtc_deb);
+    //nrf_drv_rtc_enable(&rtc_debounce);
 }
 
 int main()
@@ -216,7 +213,6 @@ int main()
     NRF_GPIOTE->INTENSET = GPIOTE_INTENSET_PORT_Msk;
     NVIC_EnableIRQ(GPIOTE_IRQn);
 
-
     // Main loop, constantly sleep, waiting for RTC and gpio IRQs
     while(1)
     {
@@ -229,22 +225,15 @@ int main()
 // This handler will be run after wakeup from system ON (GPIO wakeup)
 void GPIOTE_IRQHandler(void)
 {
-    if(NRF_GPIOTE->EVENTS_PORT)
+    if (NRF_GPIOTE->EVENTS_PORT)
     {
         //clear wakeup event
         NRF_GPIOTE->EVENTS_PORT = 0;
 
         //enable rtc interupt triggers
-        nrf_drv_rtc_enable(&rtc_maint);
-        nrf_drv_rtc_enable(&rtc_deb);
-
-        debouncing = false;
-        debounce_ticks = 0;
-        activity_ticks = 0;
+        nrf_drv_rtc_enable(&rtc_debounce);
     }
 }
-
-
 
 /*****************************************************************************/
 /** Gazell callback function definitions  */
@@ -252,24 +241,26 @@ void GPIOTE_IRQHandler(void)
 
 void  nrf_gzll_device_tx_success(uint32_t pipe, nrf_gzll_device_tx_info_t tx_info)
 {
-    uint32_t ack_payload_length = NRF_GZLL_CONST_MAX_PAYLOAD_LENGTH;    
+    // uint32_t ack_payload_length = NRF_GZLL_CONST_MAX_PAYLOAD_LENGTH;    
 
-    if (tx_info.payload_received_in_ack)
-    {
-        // Pop packet and write first byte of the payload to the GPIO port.
-        nrf_gzll_fetch_packet_from_rx_fifo(pipe, ack_payload, &ack_payload_length);
-    }
+    // if (tx_info.payload_received_in_ack)
+    // {
+    //     // Pop packet and write first byte of the payload to the GPIO port.
+    //     nrf_gzll_fetch_packet_from_rx_fifo(pipe, ack_payload, &ack_payload_length);
+    // }
 }
 
 // no action is taken when a packet fails to send, this might need to change
 void nrf_gzll_device_tx_failed(uint32_t pipe, nrf_gzll_device_tx_info_t tx_info)
 {
-    
 }
 
 // Callbacks not needed
 void nrf_gzll_host_rx_data_ready(uint32_t pipe, nrf_gzll_host_rx_info_t rx_info)
-{}
+{
+}
+
 void nrf_gzll_disabled()
-{}
+{
+}
 

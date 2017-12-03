@@ -9,6 +9,28 @@ Tested on Ubuntu 16.04.2, but should be able to find alternatives on all distros
 sudo apt install openocd gcc-arm-none-eabi
 ```
 
+## Install dependencies on macOS
+
+Tested on macOS High Sierra 10.13.1
+
+Install Homebrew
+
+```
+/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```
+
+Install Open OCD
+
+```
+brew install openocd
+```
+
+Install gcc-arm-none-eabi
+
+```
+brew install https://raw.githubusercontent.com/ARMmbed/homebrew-formulae/master/arm-none-eabi-gcc.rb
+```
+
 ## Download Nordic SDK
 
 Nordic does not allow redistribution of their SDK or components, so download and extract from their site:
@@ -24,13 +46,18 @@ cd nRF5_SDK_11
 
 ## Toolchain set-up
 
-A cofiguration file that came with the SDK needs to be changed. Assuming you installed gcc-arm with apt, the compiler root path needs to be changed in /components/toolchain/gcc/Makefile.posix, the line:
+A cofiguration file that came with the SDK needs to be changed. Assuming you installed gcc-arm with apt, the compiler root path needs to be changed in ./components/toolchain/gcc/Makefile.posix, the line:
 ```
 GNU_INSTALL_ROOT := /usr/local/gcc-arm-none-eabi-4_9-2015q1
 ```
-Replaced with:
+Replaced with (Linux):
 ```
 GNU_INSTALL_ROOT := /usr/
+```
+
+Replaced with (macOS):
+```
+GNU_INSTALL_ROOT := /usr/local
 ```
 
 ## Clone repository
@@ -39,7 +66,7 @@ Inside nRF5_SDK_11/
 git clone https://github.com/reversebias/mitosis
 ```
 
-## Install udev rules
+## Install udev rules (Linux only)
 ```
 sudo cp mitosis/49-stlinkv2.rules /etc/udev/rules.d/
 ```
