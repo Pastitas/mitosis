@@ -6,14 +6,13 @@ if [[ $? -ne 0 ]] ; then
     exit 0
 fi
 sleep 0.1
-HEX=`readlink -f _build/nrf51822_xxac.hex`
 
 echo
 echo '============================= PROGRAMMING ============================='
 {
 	echo "reset halt";
 	sleep 0.1;
-	echo "flash write_image erase" $HEX;
+	echo "flash write_image erase ./mitosis-keyboard-basic/custom/armgcc/_build/nrf51822_xxac.hex";
 	sleep 10;
 	echo "reset";
 	sleep 0.1;
