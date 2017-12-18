@@ -1,5 +1,7 @@
 # Mitosis Keyboard Firmware
-Firmware for Nordic MCUs used in the Mitosis Keyboard, contains precompiled .hex files, as well as sources buildable with the Nordic SDK
+Firmware for Nordic MCUs used in the Mitosis Keyboard, contains precompiled .hex files, as well as sources buildable with the Nordic SDK.
+
+**After flashing the keyboard, remove the battery for a few seconds before putting it back. If you don't, the keyboard will be left in debug mode and it will consume 1mA more than necessary.**
 
 ## Install dependencies
 
@@ -113,22 +115,4 @@ cd mitosis/mitosis-keyboard-basic
 ./program.sh
 ```
 An openocd session should be running in another terminal, as this script sends commands to it.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
