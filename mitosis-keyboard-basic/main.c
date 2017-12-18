@@ -105,7 +105,7 @@ int main()
 {
     nrf_gzll_init(NRF_GZLL_MODE_DEVICE);
     nrf_gzll_set_max_tx_attempts(200);
-    nrf_gzll_set_tx_power(NRF_GZLL_TX_POWER_0_DBM);
+    nrf_gzll_set_tx_power(NRF_GZLL_TX_POWER_4_DBM);
     nrf_gzll_set_base_address_0(0x01020304);
     nrf_gzll_set_base_address_1(0x05060708);
     nrf_gzll_enable();
