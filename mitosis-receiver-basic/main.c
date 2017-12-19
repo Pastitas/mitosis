@@ -1,4 +1,3 @@
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -138,8 +137,7 @@ uint32_t right_timestamp = 0;
 // 8 Hz event
 static void handler_timestamp(nrf_drv_rtc_int_type_t int_type)
 {
-    ticks++;
-    timestamp = ticks / 8;
+    timestamp = ++ticks / 8;
 }
 
 int main(void)
@@ -186,7 +184,7 @@ int main(void)
         // if no packets recieved from keyboards in a few seconds, assume either
         // out of range, or sleeping due to no keys pressed, update keystates to off
 
-        if ((timestamp - left_timestamp) > 6)
+        if ((timestamp - left_timestamp) > 12)
         {
             data_buffer[0] =
             data_buffer[2] =
@@ -195,7 +193,7 @@ int main(void)
             data_buffer[8] = 0;
         }
 
-        if ((timestamp - right_timestamp) > 6)
+        if ((timestamp - right_timestamp) > 12)
         {
             data_buffer[1] =
             data_buffer[3] =

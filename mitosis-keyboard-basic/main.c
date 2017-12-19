@@ -1,4 +1,3 @@
-
 //#define COMPILE_RIGHT
 #define COMPILE_LEFT
 
@@ -87,15 +86,20 @@ extern uint32_t debounce(uint32_t previous_state, uint32_t snapshot);
 
 // 1000Hz debounce sampling
 uint32_t remote_state = 0;
+uint32_t ticks = 0;
+uint32_t timestamp = 0;
+uint32_t remote_timestamp = 0;
 static void handler_debounce(nrf_drv_rtc_int_type_t int_type)
 {
     uint32_t snapshot = read_keys();
     uint32_t state = debounce(remote_state, snapshot);
+    timestamp = ++ticks / 1000;
 
-    if (state != remote_state)
+    if ((state != remote_state) || (timestamp - remote_timestamp) > 10)
     {
         send(state);
         remote_state = state;
+        remote_timestamp = timestamp;
     }
 }
 
