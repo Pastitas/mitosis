@@ -1,5 +1,5 @@
-//#define COMPILE_RIGHT
-#define COMPILE_LEFT
+#define COMPILE_RIGHT
+//#define COMPILE_LEFT
 
 #include "mitosis.h"
 #include "nrf_drv_config.h"
@@ -9,13 +9,8 @@
 #include "nrf_drv_clock.h"
 #include "nrf_drv_rtc.h"
 
-const nrf_drv_rtc_t rtc_debounce = NRF_DRV_RTC_INSTANCE(0); /**< Declaring an instance of nrf_drv_rtc for RTC0. */
+const nrf_drv_rtc_t rtc_debounce = NRF_DRV_RTC_INSTANCE(0);
 
-#define TX_PAYLOAD_LENGTH 3 ///< 3 byte payload length when transmitting
-static uint8_t data_payload[TX_PAYLOAD_LENGTH];                ///< Payload to send to Host. 
-static uint8_t ack_payload[NRF_GZLL_CONST_MAX_PAYLOAD_LENGTH]; ///< Placeholder for received ACK payloads from Host.
-
-// Setup switch pins with pullups
 static void gpio_config(void)
 {
     nrf_gpio_cfg_sense_input(S01, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
@@ -43,15 +38,15 @@ static void gpio_config(void)
     nrf_gpio_cfg_sense_input(S23, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
 }
 
-// Return the key states, masked with valid key pins
 static uint32_t read_keys(void)
 {
     return ~NRF_GPIO->IN & INPUT_MASK;
 }
 
-// Assemble packet and send to receiver
-static void send(uint32_t keys)
+static bool send(uint32_t keys)
 {
+    static uint8_t data_payload[3];
+    
     data_payload[0] = ((keys & 1<<S01) ? 1:0) << 7 | \
                       ((keys & 1<<S02) ? 1:0) << 6 | \
                       ((keys & 1<<S03) ? 1:0) << 5 | \
@@ -79,27 +74,29 @@ static void send(uint32_t keys)
                       ((keys & 1<<S23) ? 1:0) << 1 | \
                       0 << 0;
 
-    nrf_gzll_add_packet_to_tx_fifo(PIPE_NUMBER, data_payload, TX_PAYLOAD_LENGTH);
+    return nrf_gzll_add_packet_to_tx_fifo(PIPE_NUMBER, data_payload, sizeof(data_payload) / sizeof(data_payload[0]));
 }
 
 extern uint32_t debounce(uint32_t previous_state, uint32_t snapshot);
 
 // 1000Hz debounce sampling
 uint32_t remote_state = 0;
-uint32_t ticks = 0;
-uint32_t timestamp = 0;
-uint32_t remote_timestamp = 0;
 static void handler_debounce(nrf_drv_rtc_int_type_t int_type)
 {
+    static uint32_t ticks = 0;
+    static uint32_t remote_timestamp = 0;
+
     uint32_t snapshot = read_keys();
     uint32_t state = debounce(remote_state, snapshot);
-    timestamp = ++ticks / 1000;
+    uint32_t timestamp = ++ticks / 1000;
 
     if ((state != remote_state) || (timestamp - remote_timestamp) > 10)
     {
-        send(state);
-        remote_state = state;
-        remote_timestamp = timestamp;
+        if (send(state))
+        {
+            remote_state = state;
+            remote_timestamp = timestamp;
+        }
     }
 }
 
@@ -108,7 +105,7 @@ bool sleep = false;
 int main()
 {
     nrf_gzll_init(NRF_GZLL_MODE_DEVICE);
-    nrf_gzll_set_max_tx_attempts(200);
+    nrf_gzll_set_max_tx_attempts(100);
     nrf_gzll_set_tx_power(NRF_GZLL_TX_POWER_4_DBM);
     nrf_gzll_set_base_address_0(0x01020304);
     nrf_gzll_set_base_address_1(0x05060708);
@@ -153,17 +150,9 @@ void GPIOTE_IRQHandler(void)
 
 void  nrf_gzll_device_tx_success(uint32_t pipe, nrf_gzll_device_tx_info_t tx_info)
 {
-    uint32_t ack_payload_length = NRF_GZLL_CONST_MAX_PAYLOAD_LENGTH;    
-
-    if (tx_info.payload_received_in_ack)
+    if ((0 == remote_state))
     {
-        // Pop packet and write first byte of the payload to the GPIO port.
-        nrf_gzll_fetch_packet_from_rx_fifo(pipe, ack_payload, &ack_payload_length);
-
-        if ((0 == remote_state))
-        {
-            sleep = true;
-        }
+        sleep = true;
     }
 }
 
